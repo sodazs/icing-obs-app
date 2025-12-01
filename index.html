@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>输电线路覆冰观测记录系统</title>
+    <!-- internal Dependencies -->
+    <script src="js/calculations.js"></script>
+    <script src="js/weather.js"></script>
+    <script src="js/images.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/exports.js"></script>
+    <script src="js/app.js"></script>  <!-- app.js 最后加载，因为它依赖所有其他模块 -->
+    <!-- External Dependencies -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.29/jspdf.plugin.autotable.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'power-blue': '#005eb8', // Industry standard blue
+                        'power-light': '#e6f0fa',
+                    }
+                }
+            }
+        }  
+    </script>
+    <!-- Internal Styles -->
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body class="bg-slate-100 min-h-screen pb-10">
+    <!-- Header -->
+    <header class="bg-power-blue text-white p-4 shadow-md sticky top-0 z-40">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <i class="fa-solid fa-tower-observation text-xl"></i>
+                <h1 class="text-lg font-bold">覆冰观测记录系统</h1>
+            </div>
+            <div class="text-xs opacity-80">DL/T 5462-2012</div>
+        </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="bg-white shadow-sm sticky top-14 z-30">
+        <div class="container mx-auto grid grid-cols-2 text-center">
+            <button id="tab-record" class="tab-btn active py-3 text-gray-600 hover:bg-gray-50 transition">
+                <i class="fa-solid fa-pen-to-square mr-1"></i> 数据录入
+            </button>
+            <button id="tab-history" class="tab-btn py-3 text-gray-600 hover:bg-gray-50 transition">
+                <i class="fa-solid fa-list mr-1"></i> 历史记录
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-4 max-w-4xl">
+        <!-- RECORD DATA TAB -->
+        <div id="view-record" class="block animate-fade-in">
+            <!-- Section 1: Location -->
+            <div class="bg-white rounded-lg shadow p-4 mb-4">
+                <h2 class="text-lg font-bold text-power-blue mb-3 border-b pb-2"><i class="fa-solid fa-camera mr-2"></i>图片与定位</h2>
+                
+                <!-- <div class="mb-4">
+                    <label class="block mb-2 text-sm font-medium text-gray-900" for="file_input">添加现场照片</label>
+                    <div class="flex items-center gap-2">
+                        <label class="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-semibold py-2 px-4 rounded shadow-sm inline-flex items-center transition">
+                            <i class="fa-solid fa-images mr-2 text-power-blue"></i> 选择图片
+                            <input id="photoInput" type="file" accept="image/*" multiple class="hidden">
+                        </label>
+                        <span class="text-xs text-gray-500">支持批量选择，多次选择可追加。</span>
+                    </div>
+                </div> -->
+
+                <!-- Gallery Area -->
+                <!-- <div id="galleryContainer" class="hidden">
+                    <h3 class="text-sm font-semibold text-gray-600 mb-2">已选图片 (<span id="imgCount">0</span>)</h3>
+                    <div id="imageGallery" class="gallery-grid mb-4"> -->
+                        <!-- Images will be inserted here -->
+                    <!-- </div>
+                </div> -->
+
+                <div class="bg-gray-50 p-3 rounded border border-gray-200">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-sm text-gray-700">地理位置</span>
+                        <button id="location-btn" class="text-blue-600 text-xs hover:underline">
+                            <i class="fa-solid fa-location-crosshairs"></i> 获取位置
+                        </button>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="input-group">
+                            <label>纬度</label>
+                            <input type="text" id="latitude" class="bg-gray-100">
+                        </div>
+                        <div class="input-group">
+                            <label>经度</label>
+                            <input type="text" id="longitude" class="bg-gray-100">
+                        </div>
+                        <div class="col-span-2 input-group">
+                            <label>位置描述</label>
+                            <input type="text" id="locationDesc" placeholder="手动输入塔号或地名">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            
+            <!-- Section 2: Basic Info with Weather API -->
+            <div class="bg-white rounded-lg shadow p-4 mb-4">
+                <div class="flex justify-between items-center mb-3 border-b pb-2">
+                    <h2 class="text-lg font-bold text-power-blue"><i class="fa-solid fa-cloud-sun mr-2"></i>基础环境信息</h2>
+                    <button type="button" id="fetch-weather-btn" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition">
+                        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>自动获取天气
+                    </button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="input-group">
+                        <label>观测时间</label>
+                        <input type="datetime-local" id="recordTime">
+                    </div>
+                    <div class="input-group">
+                        <label>气温 (°C)</label>
+                        <input type="number" step="0.1" id="temperature" placeholder="自动或手动输入">
+                    </div>
+                    <div class="input-group">
+                        <label>风速 (m/s)</label>
+                        <input type="number" step="0.1" id="windSpeed" min="0" placeholder="自动或手动输入">
+                    </div>
+                    <div class="input-group">
+                        <label>风向</label>
+                        <select id="windDirection">
+                            <option value="">-- 请选择 --</option>
+                            <option value="N">北风 (N)</option>
+                            <option value="NE">东北风 (NE)</option>
+                            <option value="E">东风 (E)</option>
+                            <option value="SE">东南风 (SE)</option>
+                            <option value="S">南风 (S)</option>
+                            <option value="SW">西南风 (SW)</option>
+                            <option value="W">西风 (W)</option>
+                            <option value="NW">西北风 (NW)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Measurements -->
+            <div class="bg-white rounded-lg shadow p-4 mb-4">
+                <h2 class="text-lg font-bold text-power-blue mb-3 border-b pb-2"><i class="fa-solid fa-ruler-combined mr-2"></i>覆冰测量数据</h2>
+                <form id="measureForm">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- New Ice Type Field -->
+                      <!-- <div class="input-group md:col-span-2"> -->
+                        <div class="input-group">
+                            <label class="flex justify-between">覆冰类别 <span class="text-red-500">*</span></label>
+                            <select id="iceType" class="bg-blue-50 border-blue-300">
+                                <option value="雾凇">雾凇 (Rime)</option>
+                                <option value="雨凇">雨凇 (Glaze)</option>
+                                <option value="混合淞">混合淞 (Mixed)</option>
+                            </select>
+                        </div>
+
+                        <div class="input-group">
+                            <label class="flex justify-between">导线方向 <span class="text-red-500">*</span></label>
+                            <select id="lineDirection" class="bg-blue-50 border-blue-300">
+                                <option value="其他">其他</option>
+                                <option value="东西">东西</option>
+                                <option value="南北">南北</option>
+                            </select>
+                        </div>
+                        
+                        <div class="input-group">
+                            <label class="flex justify-between">覆冰长径 a (mm) <span class="text-red-500">*</span></label>
+                            <input type="number" id="longDiameter" step="0.1" required placeholder="垂直线路方向">
+                        </div>
+                        <div class="input-group">
+                            <label class="flex justify-between">覆冰短径 b (mm) <span class="text-red-500">*</span></label>
+                            <input type="number" id="shortDiameter" step="0.1" required placeholder="平行线路方向">
+                        </div>
+                        <div class="input-group">
+                            <label>附着物直径 (mm)</label>
+                            <input type="number" id="wireDiameter"  value="26.7" step="0.1" placeholder="导线/模拟导线直径">
+                        </div>
+                        <div class="input-group">
+                            <label>取样长度 L (cm)</label>
+                            <input type="number" id="iceLength" value="25" step="0.1" required>
+                        </div>
+                        <div class="input-group">
+                            <label>覆冰总重 (g) <span class="text-red-500">*</span></label>
+                            <input type="number" id="totalWeight" step="1" required placeholder="冰+桶">
+                        </div>
+                        <div class="input-group">
+                            <label>容器重量 (g)</label>
+                            <input type="number" id="bucketWeight" value="0" step="1" placeholder="皮重">
+                        </div>
+                    </div>
+                </form>
+                
+                <!-- Calculation Trigger -->
+                <div class="mt-4 flex justify-end">
+                    <button type="button" id="calculate-btn" class="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded shadow flex items-center">
+                        <i class="fa-solid fa-calculator mr-2"></i> 计算参数
+                    </button>
+                </div>
+
+                <!-- Results Area -->
+                <div id="resultArea" class="hidden mt-4 bg-power-light border border-blue-200 rounded p-4">
+                    <h3 class="font-bold text-power-blue mb-2">计算结果</h3>
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="text-gray-600">净冰重:</span>
+                            <span id="res-netWeight" class="font-bold text-gray-800 text-lg">0</span> g
+                        </div>
+                        <div>
+                            <span class="text-gray-600">每米冰重:</span>
+                            <span id="res-netWeight-per-m" class="font-bold text-gray-800 text-lg">0</span> g/m
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <span class="text-gray-600 block">覆冰密度 (ρ):</span>
+                            <span id="res-density" class="font-bold text-red-600 text-2xl">0.00</span> g/m³
+                        </div>
+                        <div class="col-span-2 md:col-span-1">
+                            <span class="text-gray-600 block">标准冰厚 (b):</span>
+                            <span id="res-thickness" class="font-bold text-red-600 text-2xl">0.00</span> mm
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <!-- Submit Buttons -->
+            <div class="pb-8">
+                <button id="save-btn" class="w-full bg-power-blue hover:bg-blue-800 text-white font-bold py-3 px-4 rounded shadow-lg transition transform active:scale-95 mb-4">
+                    <i class="fa-solid fa-cloud-arrow-up mr-2"></i> 保存并上传记录
+                </button>
+                <button id="reset-btn" class="w-full bg-white border border-gray-300 text-gray-600 font-bold py-2 px-4 rounded shadow hover:bg-gray-50">
+                    重置表单
+                </button>
+            </div>
+        </div>
+
+        <!-- HISTORY TAB -->
+        <div id="view-history" class="hidden animate-fade-in">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-4 gap-2">
+                    <h2 class="text-lg font-bold text-gray-800">历史观测记录</h2>
+                    <div class="flex flex-wrap gap-2">
+                        <button id="export-excel-btn" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700">
+                            <i class="fa-solid fa-file-excel mr-1"></i> Excel
+                        </button>
+                        <button id="export-pdf-btn" class="bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700">
+                            <i class="fa-solid fa-file-pdf mr-1"></i> PDF
+                        </button>
+                        <button id="export-kml-btn" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
+                            <i class="fa-solid fa-map-location-dot mr-1"></i> KML
+                        </button>
+                        <button id="clear-history-btn" class="bg-gray-500 text-white px-3 py-1 rounded text-sm hover:bg-gray-600">
+                            <i class="fa-solid fa-trash mr-1"></i> 清空
+                        </button>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm text-left text-gray-500">
+                        <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-3">时间</th>
+                                <th class="px-4 py-3">类别</th>
+                                <th class="px-4 py-3">塔号/位置</th>
+                                <th class="px-4 py-3">密度(g/cm³)</th>
+                                <th class="px-4 py-3">冰厚(mm)</th>
+                                <th class="px-4 py-3">图片</th>
+                                <th class="px-4 py-3">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            <!-- Data populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="emptyState" class="text-center py-10 text-gray-400">
+                    <i class="fa-solid fa-clipboard-list text-4xl mb-2"></i>
+                    <p>暂无记录，请在数据录入页添加。</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast">操作成功</div>
+
+</body>
+</html>
