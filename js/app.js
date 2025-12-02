@@ -34,7 +34,7 @@ class IceObservationApp {
 
         // Export actions
         document.getElementById('export-excel-btn').addEventListener('click', () => exports.exportExcel());
-        document.getElementById('export-pdf-btn').addEventListener('click', () => exports.exportPDF());
+        // document.getElementById('export-pdf-btn').addEventListener('click', () => exports.exportPDF());
         document.getElementById('export-kml-btn').addEventListener('click', () => exports.exportKML());
         document.getElementById('clear-history-btn').addEventListener('click', () => storage.clearHistory());
 
