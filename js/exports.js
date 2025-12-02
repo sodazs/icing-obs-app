@@ -2,6 +2,9 @@
 const exports = {
     exportExcel() {
         const history = JSON.parse(localStorage.getItem('iceDataHistory') || '[]');
+        if (!XLSX.utils){
+            make_xlsx_lib(XLSX)
+        }
         if (history.length === 0) { utils.showToast('无数据可导出'); return; }
 
         const flatData = history.map(item => ({
@@ -11,6 +14,12 @@ const exports = {
             纬度: item.location.lat,
             经度: item.location.lng,
             气温: item.env.temp,
+            风速: item.env.windSpeed,
+            风向: item.env.windDir,
+            长径: item.measurements.longD,
+            短径: item.measurements.shortD,
+            线径: item.measurements.wireD,
+            每米冰重: item.results.netWeight,
             覆冰密度: item.results.density,
             标准冰厚: item.results.standardThickness
         }));
@@ -21,11 +30,14 @@ const exports = {
         XLSX.writeFile(wb, "覆冰观测数据.xlsx");
     },
 
+
     exportPDF() {
         const history = JSON.parse(localStorage.getItem('iceDataHistory') || '[]');
         if (history.length === 0) { utils.showToast('无数据可导出'); return; }
-        const { jsPDF } = window.jspdf;
+        const { jsPDF } = window.jspdfapplyPlugin;
+        // applyPlugin(jsPDF);
         const doc = new jsPDF();
+      
         doc.text("Ice Observation Report", 14, 20);
         const tableColumn = ["Time", "Type", "Location", "Density", "Thickness (mm)"];
         const tableRows = history.map(item => [
